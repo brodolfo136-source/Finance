@@ -198,7 +198,10 @@
         const timeoutId = setTimeout(() => controller.abort(), 6000);
 
         try {
-            let url = `https://brapi.dev/api/quote/${tickersBolsa.join(',')}?token=${BRAPI_TOKEN}`;
+            // Ajusta automaticamente a busca se houver Fundos Imobiliários (tickers que terminam com 11)
+            let contemFII = tickersBolsa.some(t => t.endsWith('11'));
+            let url = `https://brapi.dev/api/quote/${tickersBolsa.join(',')}?token=${BRAPI_TOKEN}${contemFII ? '&listProviders=true' : ''}`;
+
             let response = await fetch(url, { signal: controller.signal });
             clearTimeout(timeoutId);
             
