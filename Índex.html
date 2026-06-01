@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Minha Carteira Real</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root { 
+            --bg: #121212; 
+            --card: #1e1e1e; 
+            --text: #ffffff; 
+            --green: #4caf50; 
+            --red: #f44336; 
+            --accent: #2196f3; 
+        }
+        body { 
+            font-family: system-ui, -apple-system, sans-serif; 
+            background: var(--bg); 
+            color: var(--text); 
+            margin: 0; 
+            padding: 15px; 
+        }
+        h1 { font-size: 24px; margin-bottom: 5px; }
+        button { 
+            background: var(--accent); 
+            color: white; 
+            border: none; 
+            padding: 10px 14px; 
+            border-radius: 6px; 
+            cursor: pointer; 
+            font-weight: bold; 
+            margin-right: 5px; 
+            font-size: 13px;
+        }
+        .btn-danger { background: var(--red); }
+        .grupo-card { 
+            background: var(--card); 
+            border-radius: 8px; 
+            padding: 15px; 
+            margin-bottom: 20px; 
+            border-left: 5px solid var(--accent); 
+        }
+        .ativo-row { 
+            display: grid; 
+            grid-template-columns: 2fr 1fr 1fr 1fr 1fr auto; 
+            gap: 8px; 
+            background: #2a2a2a; 
+            padding: 10px; 
+            border-radius: 6px; 
+            margin: 6px 0; 
+            align-items: center; 
+            font-size: 12px; 
+        }
+        .positivo { color: var(--green); }
+        .negativo { color: var(--red); }
+        .grafico-container { 
+            background: var(--card); 
+            padding: 15px; 
+            border-radius: 8px; 
+            margin-bottom: 20px; 
+        }
+        .status-api { 
+            font-size: 12px; 
+            color: #ffb300; 
+            margin-bottom: 15px; 
+            font-weight: bold; 
+            padding: 6px 10px; 
+            background: #222; 
+            border-radius: 4px; 
+            display: inline-block;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>📊 Carteira Dinâmica Automatizada</h1>
+    <div id="status" class="status-api">Status: Inicializando...</div>
+    
+    <div class="grafico-container">
+        <h3>Evolução Patrimonial / Renda Fixa</h3>
+        <canvas id="graficoEvolucao" style="max-height: 180px;"></canvas>
+        <button onclick="registrarHistoricoMês()" style="margin-top:10px; font-size:11px; background:#555;">Gravar Foto do Patrimônio Hoje</button>
+    </div>
+
+    <div style="margin-bottom: 20px; display: flex; gap: 5px;">
+        <button onclick="adicionarGrupo()">➕ Novo Grupo</button>
+        <button onclick="atualizarCotacoesWeb()" style="background: var(--green);">🔄 Atualizar Tudo</button>
+    </div>
+
+    <div id="dashboard"></div>
+<script>
+    // CONFIGURAÇÕES GLOBAIS
+    // Seu token exclusivo foi inserido aqui com sucesso
+    const BRAPI_TOKEN = "Hva7ndLMtYPox1KSioWKPh"; 
+    const TAXA_SELIC_ANO = 10.50; 
+
+    let carteira = JSON.parse(localStorage.getItem('carteira_real_v2')) || {
+        categorias: [],
+        historicoPatrimonio: []
+    };
+
+    let meuGrafico;
+    function renderizarGrafico() {
+        const ctx = document.getElementById('graficoEvolucao').getContext('2d');
+        if (meuGrafico) meuGrafico.destroy();
+        
+        const labels = carteira.historicoPatrimonio.map(h => h.data);
+        const valores = carteira.historicoPatrimonio.map(h => h.total);
+
+        meuGrafico = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{ label: 'Patrimônio (R$)', data: valores, borderColor: '#2196f3', backgroundColor: 'rgba(33, 150, 243, 0.1)', tension: 0.1, fill: true }]
+            },
+            options: { responsive: true, scales: { y: { grid: { color: '#333' }, ticks: { color: '#aaa' } }, x: { grid: { color: '#333' }, ticks: { color: '#aaa' } } } }
+        });
+    }
+
+    function salvarDados() {
+        localStorage.setItem('carteira_real_v2', JSON.stringify(carteira));
+        renderizarTela();
+    }
+
+    function adicionarGrupo() {
+        let nome = prompt("Nome do grupo (ex: FIIs, Ações, Renda Fixa):");
+        if (nome) { carteira.categorias.push({ nome: nome, ativos: [] }); salvarDados(); }
+    }
+
+    function removerGrupo(idx) { if(confirm("Excluir este grupo e todos os ativos dele?")) { carteira.categorias.splice(idx, 1); salvarDados(); } }
+
+    function adicionarAtivo(idxGrupo) {
+        let ticker = prompt("Digite o código do ativo (ex: TGAR11, PETR4).\nSe for Tesouro Selic, digite exatamente: SELIC").toUpperCase().trim();
+        if (!ticker) return;
+        
+        let qtd = parseFloat(prompt("Quantidade de cotas ou títulos:", "1")) || 0;
+        let pm = parseFloat(prompt("Preço Médio pago por cota/título (Use ponto, ex: 120.50):", "0")) || 0;
+
+        let dataCompra = new Date().toISOString().split('T')[0];
+        if(ticker === "SELIC") {
+            let dataCustom = prompt("Data da compra/aplicação (Formato: AAAA-MM-DD) ou deixe em branco para HOJE:", dataCompra);
+            if(dataCustom) dataCompra = dataCustom;
+        }
+
+        carteira.categorias[idxGrupo].ativos.push({ 
+            ticker, qtd, precoMedio: pm, cotacaoAtual: pm, dataCadastro: dataCompra 
+        });
+        salvarDados();
+        atualizarCotacoesWeb();
+    }
+
+    function removerAtivo(idxGrupo, idxAtivo) { carteira.categorias[idxGrupo].ativos.splice(idxAtivo, 1); salvarDados(); }
+
+    // CÁLCULO EXATO DE JUROS COMPOSTOS DA SELIC (LOCAL)
+    function calcularRendimentoSelic(ativo) {
+        if (!ativo.dataCadastro) return ativo.cotacaoAtual;
+        
+        let dataInicial = new Date(ativo.dataCadastro + "T12:00:00"); 
+        let dataHoje = new Date();
+        
+        let diferencaTempo = dataHoje.getTime() - dataInicial.getTime();
+        let diasCorridos = Math.floor(diferencaTempo / (1000 * 3600 * 24));
+        
+        if (diasCorridos <= 0) return ativo.precoMedio;
+
+        let taxaDiaria = Math.pow((1 + (TAXA_SELIC_ANO / 100)), (1 / 365)) - 1;
+        let valorAtualizadoPorTitulo = ativo.precoMedio * Math.pow((1 + taxaDiaria), diasCorridos);
+        
+        return parseFloat(valorAtualizadoPorTitulo.toFixed(2));
+    }
+    // MOTOR DE ATUALIZAÇÃO REVISADO COM SEU TOKEN
+    async function atualizarCotacoesWeb() {
+        const statusDiv = document.getElementById('status');
+        statusDiv.innerText = "🔄 Conectando à API financeira...";
+        statusDiv.style.color = "#ffb300";
+        
+        let tickersBolsa = [];
+        
+        carteira.categorias.forEach(cat => {
+            cat.ativos.forEach(at => { 
+                if (at.ticker === "SELIC") {
+                    at.cotacaoAtual = calcularRendimentoSelic(at);
+                } else {
+                    tickersBolsa.push(at.ticker); 
+                }
+            });
+        });
+
+        if(tickersBolsa.length === 0) {
+            statusDiv.innerText = "✅ Atualizado (Selic calculada localmente).";
+            statusDiv.style.color = "#4caf50";
+            salvarDados();
+            return;
+        }
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 6000);
+
+        try {
+            let url = `https://brapi.dev/api/quote/${tickersBolsa.join(',')}?token=${BRAPI_TOKEN}`;
+            let response = await fetch(url, { signal: controller.signal });
+            clearTimeout(timeoutId);
+            
+            if (!response.ok) throw new Error("Erro na resposta do servidor.");
+            
+            let data = await response.json();
+
+            if(data.results && data.results.length > 0) {
+                carteira.categorias.forEach(cat => {
+                    cat.ativos.forEach(ativo => {
+                        let dadosApi = data.results.find(r => r.symbol === ativo.ticker);
+                        if(dadosApi && dadosApi.regularMarketPrice) {
+                            ativo.cotacaoAtual = dadosApi.regularMarketPrice;
+                        }
+                    });
+                });
+                statusDiv.innerText = "✅ Cotações e Renda Fixa atualizadas!";
+                statusDiv.style.color = "#4caf50";
+                salvarDados();
+            } else {
+                statusDiv.innerText = "⚠️ Dados recebidos vazios. Verifique os tickers.";
+            }
+        } catch (error) {
+            console.error(error);
+            clearTimeout(timeoutId);
+            if (error.name === 'AbortError') {
+                statusDiv.innerText = "❌ Tempo limite esgotado. Rede instável.";
+            } else {
+                statusDiv.innerText = "❌ Erro de comunicação com o servidor financeiro.";
+            }
+            statusDiv.style.color = "#f44336";
+            renderizarTela();
+        }
+    }
+
+    function registrarHistoricoMês() {
+        let totalAtual = 0;
+        carteira.categorias.forEach(cat => cat.ativos.forEach(at => totalAtual += (at.qtd * at.cotacaoAtual)));
+        let mes = prompt("Nome do período de referência (ex: Jun/26, Jul/26):");
+        if(mes) { 
+            carteira.historicoPatrimonio.push({ data: mes, total: parseFloat(totalAtual.toFixed(2)) }); 
+            salvarDados(); 
+        }
+    }
+
+    function renderizarTela() {
+        const db = document.getElementById('dashboard');
+        db.innerHTML = '';
+
+        carteira.categorias.forEach((grupo, idxGrupo) => {
+            let grupoHTML = `
+                <div class="grupo-card">
+                    <div style="display: flex; justify-content: space-between; align-items:center;">
+                        <h2>📁 ${grupo.nome}</h2>
+                        <button class="btn-danger" style="padding:4px 8px; font-size:11px;" onclick="removerGrupo(${idxGrupo})">🗑️ Excluir</button>
+                    </div>
+                    <button onclick="adicionarAtivo(${idxGrupo})" style="margin: 10px 0;">➕ Adicionar Ativo</button>
+                    <div style="overflow-x: auto;">
+                        <div class="ativo-row" style="background:transparent; font-weight:bold; border-bottom:1px solid #444;">
+                            <div>Ativo</div><div>Qtd</div><div>P. Médio</div><div>Atual</div><div>Lucro/Prej.</div><div></div>
+                        </div>
+            `;
+
+            grupo.ativos.forEach((ativo, idxAtivo) => {
+                let investido = ativo.qtd * ativo.precoMedio;
+                let atual = ativo.qtd * ativo.cotacaoAtual;
+                let resultado = atual - investido;
+                let classeRes = resultado >= 0 ? 'positivo' : 'negativo';
+
+                grupoHTML += `
+                    <div class="ativo-row">
+                        <strong>${ativo.ticker}</strong>
+                        <div>${ativo.qtd}</div>
+                        <div>R$ ${ativo.precoMedio.toFixed(2)}</div>
+                        <div class="positivo">R$ ${ativo.cotacaoAtual.toFixed(2)}</div>
+                        <div class="${classeRes}">R$ ${resultado.toFixed(2)}</div>
+                        <div><button class="btn-danger" style="padding:2px 6px;" onclick="removerAtivo(${idxGrupo}, ${idxAtivo})">✕</button></div>
+                    </div>
+                `;
+            });
+
+            grupoHTML += `</div></div>`;
+            db.innerHTML += grupoHTML;
+        });
+        renderizarGrafico();
+    }
+
+    renderizarTela();
+    window.onload = () => { 
+        setTimeout(atualizarCotacoesWeb, 600); 
+    };
+</script>
+</body>
+</html>
+
+
